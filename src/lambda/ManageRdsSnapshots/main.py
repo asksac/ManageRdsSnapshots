@@ -60,6 +60,7 @@ def lambda_handler(event, context):
     last_snapshot_time = datetime(1, 1, 1, tzinfo=timezone.utc) # set to begining of time
 
     logging.info('Searching for snapshots older than %s days' % max_age)
+    delete_count = 0 
     for snapshot in db_snapshots_list['DBSnapshots']: 
       # exit if a snapshot is in creating state, and ignore snapshots that are not available
       if (snapshot['Status'] == 'creating'):
@@ -79,7 +80,13 @@ def lambda_handler(event, context):
         db_snapshot_delete = rds_client.delete_db_snapshot(
           DBSnapshotIdentifier=snapshot['DBSnapshotIdentifier']
         )
+        delete_count += 1
         logging.debug('Response from delete_db_snapshot() call: ' + str(db_snapshot_delete))
+
+    if (delete_count): 
+      logging.info('Total %s snapshots were marked for deletion in this execution' % delete_count)
+    else: 
+      logging.info('No aged snapshots were found or deleted in this execution')
 
     # determine if we should create a new snapshot now
     logging.info('Latest manual snapshot for db instance %s was created on %s' % (db_instance_id, last_snapshot_time))
@@ -95,7 +102,7 @@ def lambda_handler(event, context):
       new_snapshot_created = True
       logging.debug('Response from create_db_snapshot() call: ' + str(db_snapshot_create))
     else: 
-      logging.info('No new db snapshots were created')
+      logging.info('No new db snapshots were created, because latest snapshot is less than %s days old' % min_delay)
 
     return dict(
       statusCode = 200,
